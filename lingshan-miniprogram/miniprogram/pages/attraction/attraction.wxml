@@ -1,0 +1,80 @@
+<!--pages/attraction/attraction.wxml-->
+<view class="page-container">
+  <!-- 顶部信息栏 -->
+  <view class="header-bar">
+    <image class="back-btn" src="/assets/icons/arrow-left.png" mode="aspectFit" bindtap="goBack"></image>
+    <text class="attraction-name">{{attraction.name}}</text>
+    <text class="attraction-id" wx:if="{{attraction.id}}">ID: {{attraction.id}}</text>
+  </view>
+
+  <!-- 轮播图 -->
+  <swiper class="banner-carousel" indicator-dots="{{true}}" circular="{{true}}" autoplay="{{true}}" interval="{{3000}}">
+    <swiper-item wx:for="{{galleryImages}}" wx:key="index">
+      <image class="banner-slide" src="{{item}}" mode="aspectFill"></image>
+    </swiper-item>
+  </swiper>
+
+  <!-- 基本信息 -->
+  <view class="info-section">
+    <view class="info-card">
+      <view class="info-row">
+        <text class="info-label">📍 位置</text>
+        <text class="info-value">{{attraction.position}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">⏱️ 游览时间</text>
+        <text class="info-value">{{attraction.visitTime}}分钟</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">🎭 标签</text>
+        <view class="tags-container">
+          <text class="mini-tag" wx:for="{{attraction.tags}}" wx:key="*this">{{item}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 详细介绍 -->
+  <view class="detail-section">
+    <view class="section-title">景点介绍</view>
+    <view class="detail-content">
+      <rich-text nodes="{{attraction.description}}"></rich-text>
+    </view>
+  </view>
+
+  <!-- 文化内涵 -->
+  <view class="detail-section">
+    <view class="section-title">文化内涵</view>
+    <view class="detail-content">
+      <rich-text nodes="{{attraction.culture}}"></rich-text>
+    </view>
+  </view>
+
+  <!-- 游览提示 -->
+  <view class="tips-section">
+    <view class="section-title">游览提示</view>
+    <view class="tips-list">
+      <view class="tip-item" wx:for="{{[{tip: attraction.tip}]}}" wx:key="*this">
+        <image class="tip-icon" src="/assets/icons/lightbulb.png" mode="aspectFit"></image>
+        <text>{{item.tip}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 相关景点 -->
+  <view class="related-section" wx:if="{{relatedAttractions.length > 0}}">
+    <view class="section-title">附近景点</view>
+    <scroll-view class="related-scroll" scroll-x="{{true}}">
+      <view class="related-item" wx:for="{{relatedAttractions}}" wx:key="id" bindtap="goToRelated" data-id="{{item.id}}">
+        <image class="related-thumb" src="{{item.image}}" mode="aspectFill"></image>
+        <text class="related-name">{{item.name}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 底部操作 -->
+  <view class="bottom-actions">
+    <button class="btn-primary" size="default" bindtap="shareAttraction">分享景点</button>
+    <button class="btn-secondary" size="default" bindtap="addToVisited">已游览</button>
+  </view>
+</view>

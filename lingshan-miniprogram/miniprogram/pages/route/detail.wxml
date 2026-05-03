@@ -1,0 +1,74 @@
+<!--pages/route/detail.wxml-->
+<view class="page-container">
+  <!-- 顶部信息 -->
+  <view class="header-bar">
+    <image class="back-btn" src="/assets/icons/arrow-left.png" mode="aspectFit" bindtap="goBack"></image>
+    <text class="route-name">{{route.name}}</text>
+    <text class="route-id" wx:if="{{route.id}}">ID: {{route.id}}</text>
+  </view>
+
+  <!-- 轮播图 -->
+  <swiper class="banner-carousel" indicator-dots="{{true}}" circular="{{true}}" autoplay="{{true}}" interval="{{3000}}">
+    <swiper-item wx:for="{{galleryImages}}" wx:key="index">
+      <image class="banner-slide" src="{{item}}" mode="aspectFill"></image>
+    </swiper-item>
+  </swiper>
+
+  <!-- 基本信息 -->
+  <view class="info-section">
+    <view class="info-card">
+      <view class="info-row">
+        <text class="info-label">⏱️ 游览时长</text>
+        <text class="info-value">{{route.duration}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">📏 总距离</text>
+        <text class="info-value">{{route.totalDistance}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">🎯 难度等级</text>
+        <text class="info-value">{{route.difficulty}}</text>
+      </view>
+      <view class="info-row">
+        <text class="info-label">👥 适合人群</text>
+        <text class="info-value">{{route.type}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 行程安排 -->
+  <view class="schedule-section">
+    <view class="section-title">📋 行程安排</view>
+    <scroll-view class="schedule-list" scroll-y>
+      <view class="schedule-item" wx:for="{{route.stops}}" wx:key="order">
+        <view class="schedule-header">
+          <view class="schedule-number">{{item.order}}</view>
+          <view class="schedule-dot"></view>
+        </view>
+        <view class="schedule-content">
+          <text class="schedule-name">{{item.name}}</text>
+          <text class="schedule-time">{{item.duration}}</text>
+          <text class="schedule-tip">{{item.tip}}</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 亮点推荐 -->
+  <view class="highlight-section">
+    <view class="section-title">🌟 亮点推荐</view>
+    <view class="highlight-tags">
+      <text class="highlight-tag" wx:for="{{route.highlights}}" wx:key="*this">{{item}}</text>
+    </view>
+  </view>
+
+  <!-- 操作按钮 -->
+  <view class="action-buttons">
+    <button class="btn-primary" size="default" bindtap="startNavigation" data-id="{{route.id}}">
+      📍 开始导航
+    </button>
+    <button class="btn-secondary" size="default" bindtap="shareRoute" data-id="{{route.id}}">
+      📤 分享路线
+    </button>
+  </view>
+</view>

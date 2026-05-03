@@ -1,0 +1,86 @@
+<!--pages/route/route.wxml-->
+<view class="page-container">
+  <!-- 筛选条件 -->
+  <view class="filter-bar">
+    <view class="filter-item" bindtap="showRouteFilter" data-type="duration">
+      <text class="filter-label">游览时长</text>
+      <view class="filter-options">
+        <text class="filter-opt {{selectedDuration === 'short' ? 'active' : ''}}" wx:if="{{true}}" bindtap="selectDuration" data-val="short">短(<3h)</text>
+        <text class="filter-opt {{selectedDuration === 'medium' ? 'active' : ''}}" wx:if="{{true}}" bindtap="selectDuration" data-val="medium">中(3-5h)</text>
+        <text class="filter-opt {{selectedDuration === 'long' ? 'active' : ''}}" wx:if="{{true}}" bindtap="selectDuration" data-val="long">长(>5h)</text>
+      </view>
+    </view>
+    <view class="filter-item" bindtap="showInterestFilter" data-type="interests">
+      <text class="filter-label">兴趣偏好</text>
+      <view class="filter-tags">
+        <text class="filter-tag" wx:for="{{interestOptions}}" wx:key="id">{{item.name}}</text>
+      </view>
+    </view>
+    <view class="filter-item" bindtap="showGroupFilter" data-type="group">
+      <text class="filter-label">出行人群</text>
+      <view class="filter-options">
+        <text class="filter-opt {{selectedGroup === 'family' ? 'active' : ''}}" bindtap="selectGroup" data-val="family">家庭亲子</text>
+        <text class="filter-opt {{selectedGroup === 'couple' ? 'active' : ''}}" bindtap="selectGroup" data-val="couple">情侣/朋友</text>
+        <text class="filter-opt {{selectedGroup === 'solo' ? 'active' : ''}}" bindtap="selectGroup" data-val="solo">独自旅行</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 路线列表 -->
+  <scroll-view class="route-list" scroll-y>
+    <view class="route-card" wx:for="{{recommendedRoutes}}" wx:key="id" bindtap="goToRouteDetail" data-id="{{item.id}}">
+      <view class="route-header">
+        <image class="route-cover" src="{{item.coverImage}}" mode="aspectFill"></image>
+        <view class="route-info">
+          <text class="route-name">{{item.name}}</text>
+          <view class="route-meta">
+            <text class="meta-item duration">{{item.duration}}</text>
+            <text class="meta-item difficulty">{{item.difficulty}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="route-highlights">
+        <text class="highlight-title">🌟 亮点推荐：</text>
+        <view class="highlight-tags">
+          <text class="highlight-tag" wx:for="{{item.highlights}}" wx:key="index">{{item}}</text>
+        </view>
+      </view>
+      <view class="route-stops">
+        <text class="stops-title">📋 行程安排：</text>
+        <view class="stop-list">
+          <view class="stop-item" wx:for="{{item.stops.slice(0, 6)}}" wx:key="order">
+            <view class="stop-order">{{item.order}}.</view>
+            <view class="stop-content">
+              <text class="stop-name">{{item.name}}</text>
+              <text class="stop-time">{{item.duration}}分钟</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="route-actions">
+        <button class="btn-primary" size="default" bindtap="startRoute" data-id="{{item.id}}">开始游览</button>
+        <button class="btn-secondary" size="default" bindtap="saveRoute" data-id="{{item.id}}">保存路线</button>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 底部导航 -->
+  <view class="bottom-nav">
+    <view class="nav-item active" bindtap="switchTab" data-tab="index">
+      <image class="nav-icon" src="/assets/icons/home.png" mode="aspectFit"></image>
+      <text class="nav-label">首页</text>
+    </view>
+    <view class="nav-item" bindtap="switchTab" data-tab="chat">
+      <image class="nav-icon" src="/assets/icons/ai-guide.png" mode="aspectFit"></image>
+      <text class="nav-label">导游</text>
+    </view>
+    <view class="nav-item" bindtap="switchTab" data-tab="map" style="margin-left: auto;">
+      <image class="nav-icon" src="/assets/icons/map.png" mode="aspectFit"></image>
+      <text class="nav-label">地图</text>
+    </view>
+    <view class="nav-item" bindtap="switchTab" data-tab="profile">
+      <image class="nav-icon" src="/assets/icons/profile.png" mode="aspectFit"></image>
+      <text class="nav-label">我的</text>
+    </view>
+  </view>
+</view>

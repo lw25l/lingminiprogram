@@ -1,0 +1,145 @@
+<!--pages/map/map.wxml-->
+<view class="page-container">
+  <!-- 顶部搜索栏 -->
+  <view class="search-bar">
+    <input 
+      class="search-input" 
+      placeholder="搜索景点..." 
+      value="{{searchKeyword}}"
+      bindinput="onSearchInput"
+      confirm-type="search"
+    />
+    <image class="search-icon" src="/assets/icons/search.png" mode="aspectFit"></image>
+  </view>
+
+  <!-- 筛选标签 -->
+  <view class="filter-tags">
+    <view 
+      class="filter-tag {{currentFilter === 'all' ? 'active' : ''}}" 
+      bindtap="setFilter" 
+      data-filter="all"
+    >全部</view>
+    <view 
+      class="filter-tag {{currentFilter === '佛教文化' ? 'active' : ''}}" 
+      bindtap="setFilter" 
+      data-filter="佛教文化"
+    >佛教文化</view>
+    <view 
+      class="filter-tag {{currentFilter === '历史人文' ? 'active' : ''}}" 
+      bindtap="setFilter" 
+      data-filter="历史人文"
+    >历史人文</view>
+    <view 
+      class="filter-tag {{currentFilter === '自然风光' ? 'active' : ''}}" 
+      bindtap="setFilter" 
+      data-filter="自然风光"
+    >自然风光</view>
+    <view 
+      class="filter-tag {{currentFilter === '建筑艺术' ? 'active' : ''}}" 
+      bindtap="setFilter" 
+      data-filter="建筑艺术"
+    >建筑艺术</view>
+    <view 
+      class="filter-tag {{currentFilter === '祈福' ? 'active' : ''}}" 
+      bindtap="setFilter" 
+      data-filter="祈福"
+    >祈福</view>
+  </view>
+
+  <!-- 地图区域 -->
+  <view class="map-section">
+    <map 
+      id="attractionMap"
+      longitude="{{mapLongitude}}"
+      latitude="{{mapLatitude}}"
+      scale="{{scale}}"
+      markers="{{markers}}"
+      polyline="{{polylines}}"
+      show-location="{{true}}"
+      location="{{userLocation}}"
+      bindregionchange="onRegionChange"
+      style="width: 100%; height: 600rpx;"
+    >
+      <!-- 自定义标记 -->
+      <cover-image 
+        src="/assets/images/marker-start.png" 
+        mode="aspectFit"
+        class="custom-marker"
+        bindtap="showUserLocation"
+      />
+    </map>
+
+    <!-- 地图操作按钮 -->
+    <view class="map-actions">
+      <view class="action-btn" bindtap="locateUser">
+        <image src="/assets/icons/locate.png" mode="aspectFit" class="action-icon"></image>
+        <text>定位我的位置</text>
+      </view>
+      <view class="action-btn" bindtap="zoomIn">
+        <image src="/assets/icons/plus.png" mode="aspectFit" class="action-icon"></image>
+        <text>放大</text>
+      </view>
+      <view class="action-btn" bindtap="zoomOut">
+        <image src="/assets/icons/minus.png" mode="aspectFit" class="action-icon"></image>
+        <text>缩小</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 景点列表 -->
+  <scroll-view class="attraction-list" scroll-y>
+    <view class="list-header">
+      <text class="list-title">{{filteredAttractions.length}}个景点</text>
+      <text class="list-count">按当前筛选显示</text>
+    </view>
+
+    <view class="attraction-card" wx:for="{{filteredAttractions}}" wx:key="id" bindtap="goToAttraction" data-id="{{item.id}}">
+      <image class="attraction-thumb" src="{{item.image}}" mode="aspectFill"></image>
+      <view class="attraction-info">
+        <text class="attraction-name">{{item.name}}</text>
+        <view class="attraction-meta">
+          <text class="meta-item">{{item.visitTime}}分钟</text>
+          <text class="meta-item">{{item.tags.join(' · ')}}</text>
+        </view>
+        <view class="attraction-distance">
+          <image src="/assets/icons/location.png" mode="aspectFit" class="dist-icon"></image>
+          <text>{{getDistance(item.position)}}</text>
+        </view>
+      </view>
+      <view class="attraction-rating">
+        <text class="rating-score">{{item.avgRating || 4.5}}</text>
+        <text class="rating-stars">★</text>
+      </view>
+    </view>
+
+    <!-- 加载提示 -->
+    <view class="load-more" wx:if="{{hasMore}}">
+      <text>上拉加载更多...</text>
+    </view>
+
+    <view class="empty-state" wx:if="{{!filteredAttractions.length && !loading}}">
+      <image class="empty-icon" src="/assets/images/empty.png" mode="aspectFit"></image>
+      <text class="empty-text">暂无符合条件的景点</text>
+    </view>
+  </scroll-view>
+
+  <!-- 底部导航 -->
+  <view class="bottom-nav">
+    <view class="nav-item active" bindtap="switchTab" data-tab="index">
+      <image class="nav-icon" src="/assets/icons/home.png" mode="aspectFit"></image>
+      <text class="nav-label">首页</text>
+    </view>
+    <view class="nav-item" bindtap="switchTab" data-tab="chat">
+      <image class="nav-icon" src="/assets/icons/ai-guide.png" mode="aspectFit"></image>
+      <text class="nav-label">导游</text>
+    </view>
+    <view class="nav-item" bindtap="switchTab" data-tab="map" style="margin-left: auto;">
+      <image class="nav-icon" src="/assets/icons/map.png" mode="aspectFit"></image>
+      <text class="nav-label">地图</text>
+    </view>
+    <view class="nav-item" bindtap="switchTab" data-tab="profile">
+      <image class="nav-icon" src="/assets/icons/profile.png" mode="aspectFit"></image>
+      <text class="nav-label">我的</text>
+    </view>
+  </view>
+</view>

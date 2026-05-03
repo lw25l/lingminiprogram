@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Build
+dist/
+build/
+
+# WeChat
+miniprogram_npm/
+
+# Temporary
+*.tmp
+*.temp
+.cache/
+
+# Uploads
+uploads/

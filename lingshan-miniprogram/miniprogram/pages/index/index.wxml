@@ -1,0 +1,153 @@
+<!--pages/index/index.wxml-->
+<view class="page-container">
+  <!-- 顶部Banner -->
+  <view class="banner-section">
+    <swiper class="banner-swiper" indicator-dots="{{true}}" autoplay="{{true}}" interval="{{5000}}" duration="{{500}}" circular="{{true}}">
+      <swiper-item wx:for="{{banners}}" wx:key="id">
+        <image class="banner-image" src="{{item.image}}" mode="aspectFill" bindtap="onBannerTap" data-item="{{item}}"></image>
+      </swiper-item>
+    </swiper>
+    <view class="banner-overlay">
+      <text class="banner-title">灵山胜境</text>
+      <text class="banner-subtitle">东方佛国 · 太湖佛国</text>
+    </view>
+  </view>
+
+  <!-- 快捷入口 -->
+  <view class="quick-actions">
+    <view class="action-item" bindtap="goToChat">
+      <view class="action-icon chat-icon">
+        <image src="/assets/icons/ai-guide.png" mode="aspectFit"></image>
+      </view>
+      <text class="action-text">AI导游</text>
+    </view>
+    <view class="action-item" bindtap="goToMap">
+      <view class="action-icon map-icon">
+        <image src="/assets/icons/map-guide.png" mode="aspectFit"></image>
+      </view>
+      <text class="action-text">导览地图</text>
+    </view>
+    <view class="action-item" bindtap="goToRoute">
+      <view class="action-icon route-icon">
+        <image src="/assets/icons/route.png" mode="aspectFit"></image>
+      </view>
+      <text class="action-text">推荐路线</text>
+    </view>
+    <view class="action-item" bindtap="goToTickets">
+      <view class="action-icon ticket-icon">
+        <image src="/assets/icons/ticket.png" mode="aspectFit"></image>
+      </view>
+      <text class="action-text">门票预订</text>
+    </view>
+  </view>
+
+  <!-- 个性化推荐 -->
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">为您推荐</text>
+      <text class="section-more" bindtap="goToRoute">查看全部 ></text>
+    </view>
+    
+    <!-- 兴趣选择 -->
+    <view class="interest-tags" wx:if="{{!hasSelectedInterests}}">
+      <text class="interest-tip">选择您的兴趣，获取个性化推荐</text>
+      <view class="tags-container">
+        <view 
+          class="tag {{item.selected ? 'tag-active' : ''}}" 
+          wx:for="{{interestOptions}}" 
+          wx:key="id"
+          bindtap="toggleInterest"
+          data-index="{{index}}"
+        >
+          {{item.name}}
+        </view>
+      </view>
+      <button class="btn-primary confirm-btn" bindtap="confirmInterests" disabled="{{selectedInterestCount === 0}}">
+        确认选择 ({{selectedInterestCount}})
+      </button>
+    </view>
+
+    <!-- 推荐景点 -->
+    <view class="recommend-list" wx:if="{{recommendAttractions.length > 0}}">
+      <view class="attraction-card" wx:for="{{recommendAttractions}}" wx:key="id" bindtap="goToAttraction" data-id="{{item.id}}">
+        <image class="attraction-image" src="{{item.image}}" mode="aspectFill"></image>
+        <view class="attraction-info">
+          <text class="attraction-name">{{item.name}}</text>
+          <text class="attraction-desc">{{item.highlight}}</text>
+          <view class="attraction-tags">
+            <text class="mini-tag" wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 热门景点 -->
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">热门景点</text>
+      <text class="section-more" bindtap="goToMap">查看全部 ></text>
+    </view>
+    <scroll-view class="hot-attractions" scroll-x="{{true}}">
+      <view class="attraction-item" wx:for="{{hotAttractions}}" wx:key="id" bindtap="goToAttraction" data-id="{{item.id}}">
+        <image class="attraction-cover" src="{{item.image}}" mode="aspectFill"></image>
+        <view class="attraction-content">
+          <text class="attraction-title">{{item.name}}</text>
+          <view class="attraction-meta">
+            <text class="meta-item">{{item.visitCount}}人浏览</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 今日活动 -->
+  <view class="section">
+    <view class="section-header">
+      <text class="section-title">今日活动</text>
+    </view>
+    <view class="activity-list">
+      <view class="activity-card" wx:for="{{todayActivities}}" wx:key="id">
+        <view class="activity-time">
+          <text class="time-value">{{item.time}}</text>
+        </view>
+        <view class="activity-info">
+          <text class="activity-name">{{item.name}}</text>
+          <text class="activity-location">{{item.location}}</text>
+        </view>
+        <view class="activity-action">
+          <text class="action-btn">详情</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 实用信息 -->
+  <view class="section info-section">
+    <view class="section-header">
+      <text class="section-title">实用信息</text>
+    </view>
+    <view class="info-grid">
+      <view class="info-item" bindtap="showInfo" data-type="openTime">
+        <image class="info-icon" src="/assets/icons/clock.png"></image>
+        <text class="info-label">开放时间</text>
+        <text class="info-value">07:00-17:30</text>
+      </view>
+      <view class="info-item" bindtap="showInfo" data-type="ticket">
+        <image class="info-icon" src="/assets/icons/ticket.png"></image>
+        <text class="info-label">门票价格</text>
+        <text class="info-value">¥210起</text>
+      </view>
+      <view class="info-item" bindtap="showInfo" data-type="traffic">
+        <image class="info-icon" src="/assets/icons/bus.png"></image>
+        <text class="info-label">交通指南</text>
+        <text class="info-value">查看路线</text>
+      </view>
+      <view class="info-item" bindtap="showInfo" data-type="service">
+        <image class="info-icon" src="/assets/icons/service.png"></image>
+        <text class="info-label">服务中心</text>
+        <text class="info-value">咨询帮助</text>
+      </view>
+    </view>
+  </view>
+</view>
