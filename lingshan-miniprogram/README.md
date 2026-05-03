@@ -284,8 +284,8 @@ MIT License
 
 ## 📞 联系方式
 
-- 项目地址：https://github.com/your-username/lingshan-miniprogram
-- 问题反馈：https://github.com/your-username/lingshan-miniprogram/issues
+- 项目地址：https://github.com/lw25l/lingshan-miniprogram
+- 问题反馈：https://github.com/lw25l/lingshan-miniprogram/issues
 
 ---
 
