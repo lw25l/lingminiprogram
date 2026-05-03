@@ -1,0 +1,2000 @@
+=== 开始展示所有文件 ===
+
+
+========== JavaScript文件 ==========
+
+
+--- 文件: ./miniprogram/app.js ---
+
+// app.js
+App({
+  globalData: {
+    userInfo: null,
+    userId: null,
+    apiBaseUrl: 'https://api.lingshan-guide.com/api',
+    // 开发环境使用本地地址
+    // apiBaseUrl: 'http://localhost:3000/api',
+    selectedInterests: [],
+    chatHistory: [],
+    visitedAttractions: []
+  },
+
+  onLaunch() {
+    // 初始化
+    this.initUser();
+    this.checkUpdate();
+  },
+
+  // 初始化用户信息
+  initUser() {
+    const userId = wx.getStorageSync('userId') || this.generateUserId();
+    const userInfo = wx.getStorageSync('userInfo');
+    const selectedInterests = wx.getStorageSync('selectedInterests') || [];
+    const visitedAttractions = wx.getStorageSync('visitedAttractions') || [];
+
+    this.globalData.userId = userId;
+    this.globalData.userInfo = userInfo;
+    this.globalData.selectedInterests = selectedInterests;
+    this.globalData.visitedAttractions = visitedAttractions;
+
+    wx.setStorageSync('userId', userId);
+  },
+
+  // 生成用户ID
+  generateUserId() {
+    return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  },
+
+  // 检查小程序更新
+  checkUpdate() {
+    if (wx.canIUse('getUpdateManager')) {
+      const updateManager = wx.getUpdateManager();
+      updateManager.onCheckForUpdate((res) => {
+        if (res.hasUpdate) {
+          updateManager.onUpdateReady(() => {
+            wx.showModal({
+              title: '更新提示',
+              content: '新版本已经准备好，是否重启应用？',
+              success: (res) => {
+                if (res.confirm) {
+                  updateManager.applyUpdate();
+                }
+              }
+            });
+          });
+        }
+      });
+    }
+  },
+
+  // 保存用户兴趣
+  saveInterests(interests) {
+    this.globalData.selectedInterests = interests;
+    wx.setStorageSync('selectedInterests', interests);
+  },
+
+  // 保存访问记录
+  saveVisitedAttraction(attractionId) {
+    const visited = this.globalData.visitedAttractions;
+    if (!visited.includes(attractionId)) {
+      visited.push(attractionId);
+      this.globalData.visitedAttractions = visited;
+      wx.setStorageSync('visitedAttractions', visited);
+    }
+  },
+
+  // 添加聊天记录
+  addChatHistory(message) {
+    this.globalData.chatHistory.push(message);
+    // 只保留最近100条
+    if (this.globalData.chatHistory.length > 100) {
+      this.globalData.chatHistory = this.globalData.chatHistory.slice(-100);
+    }
+  },
+
+  // 清空聊天记录
+  clearChatHistory() {
+    this.globalData.chatHistory = [];
+    wx.removeStorageSync('chatHistory');
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/attraction/attraction.js ---
+
+// pages/attraction/attraction.js
+const app = getApp();
+const knowledge = require('../../utils/knowledge.js');
+
+Page({
+  data: {
+    attractionId: '',
+    attraction: {},
+    relatedAttractions: [],
+    galleryImages: [
+      '/assets/images/attraction-1.jpg',
+      '/assets/images/attraction-2.jpg',
+      '/assets/images/attraction-3.jpg'
+    ]
+  },
+
+  onLoad(options) {
+    const id = options.id;
+    this.setData({ attractionId: id });
+    this.loadAttraction(id);
+  },
+
+  // 加载景点信息
+  loadAttraction(id) {
+    const attraction = knowledge.getAttraction(id);
+    if (attraction) {
+      // 获取相关景点
+      const allAttractions = Object.values(knowledge.attractions);
+      const related = allAttractions
+        .filter(a => a.id !== id && a.tags.some(tag => attraction.tags.includes(tag)))
+        .slice(0, 3);
+
+      this.setData({
+        attraction: attraction,
+        relatedAttractions: related
+      });
+    } else {
+      wx.showToast({ title: '景点不存在', icon: 'none' });
+      setTimeout(() => wx.navigateBack(), 1500);
+    }
+  },
+
+  // 返回上一页
+  goBack() {
+    wx.navigateBack();
+  },
+
+  // 跳转到相关景点
+  goToRelated(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.navigateTo({ url: `/pages/attraction/attraction?id=${id}` });
+  },
+
+  // 分享景点
+  shareAttraction() {
+    wx.shareAppMessage({
+      title: '灵山胜境 - ' + this.data.attraction.name,
+      path: '/pages/attraction/attraction?id=' + this.data.attraction.id,
+      imageUrl: this.data.attraction.image
+    });
+  },
+
+  // 添加到已游览
+  addToVisited() {
+    const attraction = this.data.attraction;
+    app.saveVisitedAttraction(attraction.id);
+    wx.showToast({ title: '已添加至游览记录', icon: 'success' });
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/chat/chat.js ---
+
+// pages/chat/chat.js
+const app = getApp();
+const api = require('../../utils/api.js');
+
+Page({
+  data: {
+    showDigitalHuman: true,
+    digitalHumanAvatar: '/assets/images/ai-avatar.png',
+    digitalHumanName: '小灵',
+    userAvatar: '/assets/images/user-avatar.png',
+    
+    messages: [],
+    inputText: '',
+    isLoading: false,
+    isSpeaking: false,
+    
+    // 语音相关
+    isRecording: false,
+    showVoiceModal: false,
+    voiceTip: '正在聆听...',
+    voiceResult: '',
+    
+    // 快捷问题
+    quickQuestions: [
+      '灵山大佛有多高？',
+      '推荐一条游览路线',
+      '灵山梵宫有什么特色？',
+      '九龙灌浴几点开始？',
+      '景区门票多少钱？'
+    ],
+    
+    scrollTop: 0
+  },
+
+  onLoad() {
+    this.loadUserAvatar();
+    this.initRecorder();
+  },
+
+  onShow() {
+    // 页面显示时
+  },
+
+  // 加载用户头像
+  loadUserAvatar() {
+    const userInfo = app.globalData.userInfo;
+    if (userInfo && userInfo.avatarUrl) {
+      this.setData({ userAvatar: userInfo.avatarUrl });
+    }
+  },
+
+  // 初始化录音器
+  initRecorder() {
+    this.recorderManager = wx.getRecorderManager();
+    this.recorderManager.onStart(() => {
+      this.setData({ 
+        isRecording: true,
+        showVoiceModal: true,
+        voiceTip: '正在聆听...',
+        voiceResult: ''
+      });
+    });
+    
+    this.recorderManager.onStop((res) => {
+      this.setData({ isRecording: false });
+      // 上传语音识别
+      this.recognizeVoice(res.tempFilePath);
+    });
+    
+    this.recorderManager.onError((err) => {
+      console.error('录音错误:', err);
+      this.setData({ 
+        isRecording: false,
+        showVoiceModal: false 
+      });
+      wx.showToast({ title: '录音失败', icon: 'none' });
+    });
+  },
+
+  // 输入框变化
+  onInputChange(e) {
+    this.setData({ inputText: e.detail.value });
+  },
+
+  // 发送消息
+  async sendMessage() {
+    const text = this.data.inputText.trim();
+    if (!text || this.data.isLoading) return;
+
+    // 添加用户消息
+    const userMessage = {
+      id: Date.now(),
+      role: 'user',
+      content: text
+    };
+    
+    this.setData({ 
+      messages: [...this.data.messages, userMessage],
+      inputText: '',
+      isLoading: true
+    });
+
+    this.scrollToBottom();
+
+    try {
+      // 调用AI接口
+      const response = await this.callAI(text);
+      
+      // 添加AI回复
+      const aiMessage = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: response.content,
+        recommendations: response.recommendations || [],
+        actions: response.actions || []
+      };
+      
+      this.setData({ 
+        messages: [...this.data.messages, aiMessage],
+        isLoading: false
+      });
+
+      this.scrollToBottom();
+
+      // 语音播报
+      this.speak(response.content);
+
+    } catch (error) {
+      console.error('AI调用失败:', error);
+      this.setData({ isLoading: false });
+      
+      wx.showToast({ title: '网络错误，请重试', icon: 'none' });
+    }
+  },
+
+  // 发送快捷问题
+  sendQuickQuestion(e) {
+    const question = e.currentTarget.dataset.question;
+    this.setData({ inputText: question });
+    this.sendMessage();
+  },
+
+  // 调用AI接口
+  async callAI(query) {
+    try {
+      const result = await api.post('/chat', {
+        query: query,
+        userId: app.globalData.userId,
+        interests: app.globalData.selectedInterests,
+        history: this.data.messages.slice(-10) // 最近10条历史
+      });
+      return result;
+    } catch (error) {
+      // 模拟响应（开发测试用）
+      return this.getMockResponse(query);
+    }
+  },
+
+  // 模拟响应（开发测试用）
+  getMockResponse(query) {
+    const knowledgeBase = require('../../utils/knowledge.js');
+    return knowledgeBase.getResponse(query);
+  },
+
+  // 开始录音
+  startRecording() {
+    wx.authorize({
+      scope: 'scope.record',
+      success: () => {
+        this.recorderManager.start({
+          format: 'mp3',
+          duration: 60000
+        });
+      },
+      fail: () => {
+        wx.showModal({
+          title: '提示',
+          content: '需要录音权限才能使用语音输入',
+          success: (res) => {
+            if (res.confirm) {
+              wx.openSetting();
+            }
+          }
+        });
+      }
+    });
+  },
+
+  // 停止录音
+  stopRecording() {
+    if (this.data.isRecording) {
+      this.recorderManager.stop();
+      this.setData({ 
+        showVoiceModal: false,
+        voiceTip: '识别中...'
+      });
+    }
+  },
+
+  // 取消录音
+  cancelRecording() {
+    this.setData({ 
+      isRecording: false,
+      showVoiceModal: false 
+    });
+  },
+
+  // 语音识别
+  async recognizeVoice(filePath) {
+    try {
+      // 调用语音识别API
+      const result = await api.upload('/voice/recognize', filePath);
+      
+      if (result.text) {
+        this.setData({ 
+          inputText: result.text,
+          showVoiceModal: false 
+        });
+        this.sendMessage();
+      }
+    } catch (error) {
+      // 模拟识别结果
+      this.setData({ 
+        inputText: '灵山大佛有多高',
+        showVoiceModal: false 
+      });
+      this.sendMessage();
+    }
+  },
+
+  // 语音播报
+  speak(text) {
+    // 使用讯飞TTS或其他语音合成服务
+    // 这里使用微信内置朗读（受限）
+    // 实际项目中应接入专业TTS服务
+    this.setData({ isSpeaking: true });
+    
+    setTimeout(() => {
+      this.setData({ isSpeaking: false });
+    }, 3000);
+  },
+
+  // 处理操作按钮
+  handleAction(e) {
+    const action = e.currentTarget.dataset.action;
+    
+    switch (action.type) {
+      case 'route':
+        wx.navigateTo({ url: `/pages/route/route?type=${action.params}` });
+        break;
+      case 'attraction':
+        wx.navigateTo({ url: `/pages/attraction/attraction?id=${action.params}` });
+        break;
+      case 'map':
+        wx.switchTab({ url: '/pages/map/map' });
+        break;
+    }
+  },
+
+  // 跳转到景点详情
+  goToAttraction(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.navigateTo({ url: `/pages/attraction/attraction?id=${id}` });
+  },
+
+  // 滚动到底部
+  scrollToBottom() {
+    wx.createSelectorQuery()
+      .select('.chat-messages')
+      .boundingClientRect((rect) => {
+        this.setData({ scrollTop: rect.height + 1000 });
+      })
+      .exec();
+  },
+
+  // 清空聊天
+  clearChat() {
+    wx.showModal({
+      title: '提示',
+      content: '确定要清空聊天记录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          this.setData({ messages: [] });
+          app.clearChatHistory();
+        }
+      }
+    });
+  },
+
+  // 分享
+  onShareAppMessage() {
+    return {
+      title: '灵山胜境AI智能导游',
+      path: '/pages/chat/chat',
+      imageUrl: '/assets/images/share.jpg'
+    };
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/index/index.js ---
+
+// pages/index/index.js
+const app = getApp();
+
+Page({
+  data: {
+    banners: [
+      { id: 1, image: '/assets/images/banner1.jpg', title: '灵山大佛', link: '/pages/attraction/attraction?id=LS-006' },
+      { id: 2, image: '/assets/images/banner2.jpg', title: '灵山梵宫', link: '/pages/attraction/attraction?id=LS-007' },
+      { id: 3, image: '/assets/images/banner3.jpg', title: '九龙灌浴', link: '/pages/attraction/attraction?id=LS-008' }
+    ],
+    interestOptions: [
+      { id: 1, name: '佛教文化', selected: false },
+      { id: 2, name: '历史人文', selected: false },
+      { id: 3, name: '自然风光', selected: false },
+      { id: 4, name: '建筑艺术', selected: false },
+      { id: 5, name: '祈福许愿', selected: false },
+      { id: 6, name: '亲子游玩', selected: false }
+    ],
+    selectedInterestCount: 0,
+    hasSelectedInterests: false,
+    recommendAttractions: [],
+    hotAttractions: [
+      { id: 'LS-006', name: '灵山大佛', image: '/assets/images/buddha.jpg', visitCount: 12856 },
+      { id: 'LS-007', name: '灵山梵宫', image: '/assets/images/palace.jpg', visitCount: 10234 },
+      { id: 'LS-008', name: '九龙灌浴', image: '/assets/images/fountain.jpg', visitCount: 9567 },
+      { id: 'LS-009', name: '五印坛城', image: '/assets/images/tancheng.jpg', visitCount: 7890 },
+      { id: 'LS-005', name: '菩提大道', image: '/assets/images/bodhi.jpg', visitCount: 6789 }
+    ],
+    todayActivities: [
+      { id: 1, time: '10:35', name: '《吉祥颂》演出', location: '灵山梵宫圣坛' },
+      { id: 2, time: '11:30', name: '九龙灌浴表演', location: '九龙灌浴广场' },
+      { id: 3, time: '14:00', name: '《吉祥颂》演出', location: '灵山梵宫圣坛' },
+      { id: 4, time: '15:30', name: '九龙灌浴表演', location: '九龙灌浴广场' }
+    ]
+  },
+
+  onLoad() {
+    this.checkInterests();
+    this.loadRecommendations();
+  },
+
+  onShow() {
+    // 刷新数据
+  },
+
+  // 检查是否已选择兴趣
+  checkInterests() {
+    const selectedInterests = app.globalData.selectedInterests || [];
+    if (selectedInterests.length > 0) {
+      this.setData({ hasSelectedInterests: true });
+      this.updateInterestTags(selectedInterests);
+    }
+  },
+
+  // 更新兴趣标签状态
+  updateInterestTags(selectedInterests) {
+    const interestOptions = this.data.interestOptions.map(item => ({
+      ...item,
+      selected: selectedInterests.includes(item.name)
+    }));
+    this.setData({ 
+      interestOptions,
+      selectedInterestCount: selectedInterests.length 
+    });
+  },
+
+  // 切换兴趣选择
+  toggleInterest(e) {
+    const index = e.currentTarget.dataset.index;
+    const interestOptions = this.data.interestOptions;
+    interestOptions[index].selected = !interestOptions[index].selected;
+    
+    const selectedInterestCount = interestOptions.filter(i => i.selected).length;
+    this.setData({ interestOptions, selectedInterestCount });
+  },
+
+  // 确认兴趣选择
+  confirmInterests() {
+    const selectedInterests = this.data.interestOptions
+      .filter(i => i.selected)
+      .map(i => i.name);
+    
+    app.saveInterests(selectedInterests);
+    this.setData({ hasSelectedInterests: true });
+    this.loadRecommendations();
+    
+    wx.showToast({
+      title: '设置成功',
+      icon: 'success'
+    });
+  },
+
+  // 加载推荐景点
+  loadRecommendations() {
+    const interests = app.globalData.selectedInterests || [];
+    
+    // 根据兴趣推荐景点（模拟数据）
+    let recommendations = [];
+    
+    if (interests.includes('佛教文化')) {
+      recommendations.push(
+        { id: 'LS-006', name: '灵山大佛', image: '/assets/images/buddha.jpg', highlight: '世界最高露天青铜释迦牟尼立像', tags: ['佛教文化', '祈福'] },
+        { id: 'LS-009', name: '五印坛城', image: '/assets/images/tancheng.jpg', highlight: '藏传佛教文化瑰宝', tags: ['佛教文化', '建筑艺术'] }
+      );
+    }
+    
+    if (interests.includes('历史人文')) {
+      recommendations.push(
+        { id: 'LS-007', name: '灵山梵宫', image: '/assets/images/palace.jpg', highlight: '佛教艺术的卢浮宫', tags: ['历史人文', '建筑艺术'] },
+        { id: 'LS-001', name: '灵山大照壁', image: '/assets/images/wall.jpg', highlight: '华夏第一壁', tags: ['历史人文'] }
+      );
+    }
+    
+    if (interests.includes('自然风光')) {
+      recommendations.push(
+        { id: 'LS-005', name: '菩提大道', image: '/assets/images/bodhi.jpg', highlight: '禅意清幽的朝圣步道', tags: ['自然风光', '佛教文化'] }
+      );
+    }
+    
+    if (interests.includes('祈福许愿')) {
+      recommendations.push(
+        { id: 'LS-006', name: '灵山大佛', image: '/assets/images/buddha.jpg', highlight: '抱佛脚祈福', tags: ['祈福', '佛教文化'] },
+        { id: 'LS-008', name: '九龙灌浴', image: '/assets/images/fountain.jpg', highlight: '接取祈福圣水', tags: ['祈福', '演艺'] }
+      );
+    }
+    
+    // 默认推荐
+    if (recommendations.length === 0) {
+      recommendations = [
+        { id: 'LS-006', name: '灵山大佛', image: '/assets/images/buddha.jpg', highlight: '世界最高露天青铜释迦牟尼立像', tags: ['必游', '佛教文化'] },
+        { id: 'LS-007', name: '灵山梵宫', image: '/assets/images/palace.jpg', highlight: '佛教艺术的卢浮宫', tags: ['必游', '建筑艺术'] },
+        { id: 'LS-008', name: '九龙灌浴', image: '/assets/images/fountain.jpg', highlight: '花开见佛的神圣瞬间', tags: ['必游', '演艺'] }
+      ];
+    }
+    
+    // 去重
+    const uniqueRecommendations = [];
+    const ids = new Set();
+    for (const item of recommendations) {
+      if (!ids.has(item.id)) {
+        ids.add(item.id);
+        uniqueRecommendations.push(item);
+      }
+    }
+    
+    this.setData({ recommendAttractions: uniqueRecommendations.slice(0, 5) });
+  },
+
+  // 跳转到聊天页
+  goToChat() {
+    wx.switchTab({ url: '/pages/chat/chat' });
+  },
+
+  // 跳转到地图页
+  goToMap() {
+    wx.switchTab({ url: '/pages/map/map' });
+  },
+
+  // 跳转到路线推荐
+  goToRoute() {
+    wx.navigateTo({ url: '/pages/route/route' });
+  },
+
+  // 跳转到门票预订
+  goToTickets() {
+    wx.showToast({ title: '功能开发中', icon: 'none' });
+  },
+
+  // 跳转到景点详情
+  goToAttraction(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.navigateTo({ url: `/pages/attraction/attraction?id=${id}` });
+  },
+
+  // 点击Banner
+  onBannerTap(e) {
+    const item = e.currentTarget.dataset.item;
+    if (item.link) {
+      wx.navigateTo({ url: item.link });
+    }
+  },
+
+  // 显示实用信息
+  showInfo(e) {
+    const type = e.currentTarget.dataset.type;
+    let content = '';
+    
+    switch (type) {
+      case 'openTime':
+        content = '开放时间：\n旺季（3月-11月）：07:00-17:30\n淡季（12月-2月）：07:30-17:00\n\n表演时间：\n九龙灌浴：10:00、11:30、14:00、15:30\n《吉祥颂》：10:35、11:30、14:00、16:00';
+        break;
+      case 'ticket':
+        content = '门票价格：\n成人票：210元/人\n优惠票：120元/人（学生、60-69岁老人）\n免票：70岁以上老人、残疾人、现役军人\n\n包含：灵山大佛、灵山梵宫、九龙灌浴、五印坛城等';
+        break;
+      case 'traffic':
+        content = '交通指南：\n\n公交：\n• 无锡火车站乘坐88路、89路直达\n• 鼋头渚乘坐88路直达\n\n自驾：\n• 沪宁高速无锡东出口→太湖大道→梁清路→环湖路→灵山\n• 锡宜高速阳山出口→陆马公路→灵山';
+        break;
+      case 'service':
+        content = '服务中心：\n\n游客中心：景区入口处\n咨询电话：0510-85689999\n投诉电话：0510-85689118\n\n服务项目：\n• 行李寄存\n• 轮椅租借\n• 导览设备租借\n• 母婴室';
+        break;
+    }
+    
+    wx.showModal({
+      title: '实用信息',
+      content: content,
+      showCancel: false,
+      confirmText: '知道了'
+    });
+  },
+
+  // 分享
+  onShareAppMessage() {
+    return {
+      title: '灵山胜境AI智能导览',
+      path: '/pages/index/index',
+      imageUrl: '/assets/images/share.jpg'
+    };
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/map/map.js ---
+
+// pages/map/map.js
+const app = getApp();
+const api = require('../../utils/api.js');
+const knowledge = require('../../utils/knowledge.js');
+
+Page({
+  data: {
+    searchKeyword: '',
+    currentFilter: 'all',
+    filteredAttractions: [],
+    mapLongitude: 120.35,
+    mapLatitude: 31.48,
+    scale: 16,
+    markers: [],
+    polylines: [],
+    userLocation: {
+      latitude: 31.48,
+      longitude: 120.35,
+      name: '我的位置'
+    },
+    loading: false,
+    hasMore: true,
+    page: 'map'
+  },
+
+  onLoad() {
+    this.loadAttractions();
+    this.initMap();
+  },
+
+  // 加载景点列表
+  loadAttractions() {
+    this.setData({ loading: true });
+    
+    // 模拟API调用
+    setTimeout(() => {
+      const allAttractions = Object.values(knowledge.attractions);
+      const filtered = this.filterByTag(allAttractions);
+      
+      this.setData({
+        filteredAttractions: filtered,
+        markers: this.generateMarkers(filtered),
+        loading: false,
+        hasMore: true
+      });
+    }, 500);
+  },
+
+  // 根据标签筛选
+  filterByTag(attractions) {
+    const tag = this.data.currentFilter;
+    if (tag === 'all') return attractions;
+    return attractions.filter(a => a.tags && a.tags.includes(tag));
+  },
+
+  // 设置筛选
+  setFilter(e) {
+    const filter = e.currentTarget.dataset.filter;
+    this.setData({ currentFilter: filter, filteredAttractions: [], hasMore: true });
+    this.loadAttractions();
+  },
+
+  // 搜索输入
+  onSearchInput(e) {
+    this.setData({ searchKeyword: e.detail.value });
+  },
+
+  // 跳转到景点详情
+  goToAttraction(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.navigateTo({ url: `/pages/attraction/attraction?id=${id}` });
+  },
+
+  // 初始化地图
+  initMap() {
+    wx.getLocation({
+      type: 'gcj02',
+      success: (res) => {
+        console.log('用户位置:', res);
+      }
+    });
+  },
+
+  // 定位用户
+  locateUser() {
+    wx.openLocation({
+      latitude: this.data.userLocation.latitude,
+      longitude: this.data.userLocation.longitude,
+      name: '我的位置',
+      address: '灵山胜境景区'
+    });
+  },
+
+  // 区域变化
+  onRegionChange(e) {
+    console.log('区域变化:', e);
+  },
+
+  // 放大
+  zoomIn() {
+    this.setData({ scale: Math.min(this.data.scale + 2, 20) });
+  },
+
+  // 缩小
+  zoomOut() {
+    this.setData({ scale: Math.max(this.data.scale - 2, 12) });
+  },
+
+  // 生成标记点
+  generateMarkers(attractions) {
+    return attractions.map(attraction => ({
+      id: attraction.id,
+      latitude: 31.47 + Math.random() * 0.02,
+      longitude: 120.34 + Math.random() * 0.02,
+      width: 40,
+      height: 40,
+      iconPath: '/assets/images/marker.png',
+      callout: {
+        content: attraction.name,
+        color: '#fff',
+        fontSize: 14,
+        borderRadius: 4,
+        backgroundColor: 'rgba(74, 144, 217, 0.9)'
+      }
+    }));
+  },
+
+  // 获取距离（模拟）
+  getDistance(location) {
+    // 这里应该根据实际位置计算距离
+    return '约3km';
+  },
+
+  // 切换Tab页
+  switchTab(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab === 'index') {
+      wx.switchTab({ url: '/pages/index/index' });
+    } else if (tab === 'chat') {
+      wx.switchTab({ url: '/pages/chat/chat' });
+    } else if (tab === 'profile') {
+      wx.switchTab({ url: '/pages/profile/profile' });
+    }
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/profile/profile.js ---
+
+// pages/profile/profile.js
+const app = getApp();
+
+Page({
+  data: {
+    loggedIn: false,
+    userInfo: null,
+    visitCount: 0,
+    chatCount: 0,
+    satisfactionScore: 4.8,
+    showLogoutModal: false
+  },
+
+  onLoad() {
+    this.checkLoginStatus();
+    this.loadUserData();
+  },
+
+  // 检查登录状态
+  checkLoginStatus() {
+    const userInfo = app.globalData.userInfo;
+    if (userInfo) {
+      this.setData({
+        loggedIn: true,
+        userInfo: userInfo
+      });
+    }
+  },
+
+  // 加载用户数据
+  loadUserData() {
+    // 模拟数据
+    this.setData({
+      visitCount: Math.floor(Math.random() * 20) + 5,
+      chatCount: Math.floor(Math.random() * 50) + 10,
+      satisfactionScore: (4.5 + Math.random()).toFixed(1)
+    });
+  },
+
+  // 跳转到登录页
+  goToLogin() {
+    wx.navigateTo({ url: '/pages/login/login' });
+  },
+
+  // 显示退出确认弹窗
+  showLogoutModal() {
+    this.setData({ showLogoutModal: true });
+  },
+
+  // 隐藏退出确认弹窗
+  hideLogoutModal() {
+    this.setData({ showLogoutModal: false });
+  },
+
+  // 执行退出
+  doLogout() {
+    app.globalData.userInfo = null;
+    app.globalData.userId = null;
+    wx.removeStorageSync('token');
+    wx.removeStorageSync('userInfo');
+    wx.reLaunch({ url: '/pages/index/index' });
+  },
+
+  // 跳转到路线页面
+  goToRoute() {
+    wx.switchTab({ url: '/pages/route/route' });
+  },
+
+  // 跳转到游览记录
+  goToVisited() {
+    wx.showToast({ title: '功能开发中', icon: 'none' });
+  },
+
+  // 跳转到意见反馈
+  goToFeedback() {
+    wx.showToast({ title: '功能开发中', icon: 'none' });
+  },
+
+  // 跳转到设置
+  goToSettings() {
+    wx.showToast({ title: '功能开发中', icon: 'none' });
+  },
+
+  // 显示已游览景点数量
+  showVisitCount() {
+    wx.showToast({ title: `已游览${this.data.visitCount}个景点`, icon: 'success' });
+  },
+
+  // 显示对话次数
+  showChatHistory() {
+    wx.showToast({ title: `共对话${this.data.chatCount}次`, icon: 'success' });
+  },
+
+  // 显示满意度
+  showSatisfaction() {
+    wx.showToast({ title: `满意度 ${this.data.satisfactionScore}分`, icon: 'success' });
+  },
+
+  // 编辑个人资料
+  editProfile() {
+    wx.showToast({ title: '功能开发中', icon: 'none' });
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/route/detail.js ---
+
+// pages/route/detail.js
+const knowledge = require('../../utils/knowledge.js');
+
+Page({
+  data: {
+    routeId: '',
+    route: {},
+    galleryImages: [
+      '/assets/images/route-1.jpg',
+      '/assets/images/route-2.jpg'
+    ]
+  },
+
+  onLoad(options) {
+    const id = options.id;
+    this.setData({ routeId: id });
+    this.loadRoute(id);
+  },
+
+  // 加载路线信息
+  loadRoute(id) {
+    const routes = knowledge.getPresetRoutes();
+    const route = routes.find(r => r.id === id);
+    if (route) {
+      this.setData({ route });
+    } else {
+      wx.showToast({ title: '路线不存在', icon: 'none' });
+      setTimeout(() => wx.navigateBack(), 1500);
+    }
+  },
+
+  // 返回上一页
+  goBack() {
+    wx.navigateBack();
+  },
+
+  // 开始导航
+  startNavigation(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.showToast({ title: '正在启动导航...', icon: 'success' });
+  },
+
+  // 分享路线
+  shareRoute(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.shareAppMessage({
+      title: '灵山胜境 - ' + this.data.route.name,
+      path: '/pages/route/detail?id=' + id,
+      imageUrl: this.data.route.coverImage
+    });
+  }
+});
+
+
+
+--- 文件: ./miniprogram/pages/route/route.js ---
+
+// pages/route/route.js
+const knowledge = require('../../utils/knowledge.js');
+
+Page({
+  data: {
+    selectedDuration: 'medium',
+    selectedGroup: 'family',
+    recommendedRoutes: [],
+    interestOptions: [
+      { id: 1, name: '佛教文化' },
+      { id: 2, name: '历史人文' },
+      { id: 3, name: '自然风光' },
+      { id: 4, name: '建筑艺术' }
+    ]
+  },
+
+  onLoad() {
+    this.loadRecommendedRoutes();
+  },
+
+  // 加载推荐路线
+  loadRecommendedRoutes() {
+    // 使用预设路线数据
+    const routes = knowledge.getPresetRoutes();
+    this.setData({ recommendedRoutes: routes });
+  },
+
+  // 选择游览时长
+  selectDuration(e) {
+    const val = e.currentTarget.dataset.val;
+    this.setData({ selectedDuration: val });
+    this.filterRoutes();
+  },
+
+  // 选择出行人群
+  selectGroup(e) {
+    const val = e.currentTarget.dataset.val;
+    this.setData({ selectedGroup: val });
+    this.filterRoutes();
+  },
+
+  // 筛选路线
+  filterRoutes() {
+    const { selectedDuration, selectedGroup } = this.data;
+    const routes = knowledge.getPresetRoutes();
+    
+    const filtered = routes.filter(r => {
+      // 根据时长筛选
+      if (selectedDuration === 'short' && r.duration !== '短(<3h)') return false;
+      if (selectedDuration === 'medium' && !['中(3-5h)'].includes(r.duration)) return false;
+      if (selectedDuration === 'long' && r.duration !== '长(>5h)') return false;
+      
+      // 根据人群筛选
+      if (selectedGroup === 'family' && r.type !== '家庭亲子') return false;
+      if (selectedGroup === 'couple' && r.type !== '情侣/朋友') return false;
+      if (selectedGroup === 'solo' && r.type !== '独自旅行') return false;
+      
+      return true;
+    });
+    
+    this.setData({ recommendedRoutes: filtered });
+  },
+
+  // 跳转到路线详情
+  goToRouteDetail(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.navigateTo({ url: `/pages/route/detail?id=${id}` });
+  },
+
+  // 开始游览
+  startRoute(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.showToast({ title: '导航已开启', icon: 'success' });
+  },
+
+  // 保存路线
+  saveRoute(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.showToast({ title: '路线已保存', icon: 'success' });
+  },
+
+  // 切换Tab页
+  switchTab(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab === 'index') {
+      wx.switchTab({ url: '/pages/index/index' });
+    } else if (tab === 'chat') {
+      wx.switchTab({ url: '/pages/chat/chat' });
+    } else if (tab === 'map') {
+      wx.switchTab({ url: '/pages/map/map' });
+    } else if (tab === 'profile') {
+      wx.switchTab({ url: '/pages/profile/profile' });
+    }
+  }
+});
+
+
+
+--- 文件: ./miniprogram/utils/api.js ---
+
+// utils/api.js - API请求封装
+
+const app = getApp();
+
+const BASE_URL = 'https://api.lingshan-guide.com/api';
+
+/**
+ * GET请求
+ */
+function get(url, data = {}) {
+  return request(url, 'GET', data);
+}
+
+/**
+ * POST请求
+ */
+function post(url, data = {}) {
+  return request(url, 'POST', data);
+}
+
+/**
+ * 上传文件
+ */
+function upload(url, filePath) {
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: BASE_URL + url,
+      filePath: filePath,
+      name: 'file',
+      header: {
+        'Authorization': `Bearer ${wx.getStorageSync('token')}`
+      },
+      success: (res) => {
+        if (res.statusCode === 200) {
+          resolve(JSON.parse(res.data));
+        } else {
+          reject(res);
+        }
+      },
+      fail: reject
+    });
+  });
+}
+
+/**
+ * 统一请求方法
+ */
+function request(url, method, data) {
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url: BASE_URL + url,
+      method: method,
+      data: data,
+      header: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${wx.getStorageSync('token')}`
+      },
+      success: (res) => {
+        if (res.statusCode === 200) {
+          resolve(res.data);
+        } else if (res.statusCode === 401) {
+          // 未授权，跳转登录
+          wx.removeStorageSync('token');
+          reject(res);
+        } else {
+          reject(res);
+        }
+      },
+      fail: reject
+    });
+  });
+}
+
+module.exports = {
+  get,
+  post,
+  upload,
+  
+  // 景点相关API
+  getAttractions: () => get('/attractions'),
+  getAttractionDetail: (id) => get(`/attractions/${id}`),
+  
+  // 路线相关API
+  getRoutes: () => get('/routes'),
+  getRouteDetail: (id) => get(`/routes/${id}`),
+  
+  // 聊天相关API
+  chat: (data) => post('/chat', data),
+  
+  // 用户相关API
+  login: (code) => post('/user/login', { code }),
+  getUserInfo: () => get('/user/info'),
+  updateUserInfo: (data) => post('/user/update', data),
+  
+  // 反馈相关API
+  submitFeedback: (data) => post('/feedback', data),
+  getHistory: () => get('/user/history')
+};
+
+
+
+--- 文件: ./miniprogram/utils/knowledge.js ---
+
+// utils/knowledge.js - 本地知识库
+
+const attractions = {
+  'LS-001': {
+    id: 'LS-001',
+    name: '灵山大照壁',
+    position: '景区入口处',
+    highlight: '华夏第一壁',
+    description: '赵朴初先生亲笔题写鎏金"灵山胜境"四字，长39.8米，高7米，采用优质青石雕刻而成。',
+    culture: '背面刻有《小灵山》诗，将无锡小灵山与印度灵鹫山相媲美，奠定整个景区的佛教文化基调。',
+    tips: '景区入口处打卡点，适合拍摄湖光壁影同框美景',
+    image: '/assets/images/wall.jpg',
+    tags: ['历史人文', '文化'],
+    visitTime: 15
+  },
+  'LS-002': {
+    id: 'LS-002',
+    name: '五明桥',
+    position: '大照壁北侧',
+    highlight: '佛教智慧象征',
+    description: '5座石拱桥并列，代表佛教五种核心智慧：声明、因明、内明、医方明、工巧明。',
+    culture: '寓意过桥即能开启智慧、走向觉悟。',
+    tips: '漫步过桥，在行走中体悟五明智慧的内涵',
+    image: '/assets/images/bridge.jpg',
+    tags: ['佛教文化', '建筑'],
+    visitTime: 10
+  },
+  'LS-003': {
+    id: 'LS-003',
+    name: '佛足坛',
+    position: '菩提大道起点',
+    highlight: '佛教朝圣核心节点',
+    description: '巨型佛足印一对，每只足印长1.2米，宽0.6米，青铜铸造，足心刻有32种吉祥图案。',
+    culture: '复刻佛祖释迦牟尼真身脚印，象征"佛足所至，佛光普照"',
+    tips: '瞻仰佛足，亲手触摸足心吉祥图案，寄托祈福心愿',
+    image: '/assets/images/buddha-foot.jpg',
+    tags: ['佛教文化', '祈福'],
+    visitTime: 15
+  },
+  'LS-004': {
+    id: 'LS-004',
+    name: '五智门',
+    position: '核心景区入口处',
+    highlight: '核心景区门户',
+    description: '高16.8米，宽35米，五门六柱石牌坊造型，汉白玉雕刻。五门象征五方五佛，六柱代表六度波罗蜜。',
+    culture: '穿过这道门，便正式从"凡俗之境"踏入"禅意圣地"',
+    tips: '拍摄牌坊全景，解读门柱经文与门楣图案',
+    image: '/assets/images/gate.jpg',
+    tags: ['佛教文化', '建筑'],
+    visitTime: 15
+  },
+  'LS-005': {
+    id: 'LS-005',
+    name: '菩提大道',
+    position: '五智门北侧',
+    highlight: '禅意清幽的朝圣步道',
+    description: '长约250米，两侧种植近百棵从印度引进的正宗菩提树。',
+    culture: '象征佛陀在菩提树下悟道成佛的艰辛历程，营造清净悠远的禅境',
+    tips: '漫步林荫拱廊，感受禅意清幽，春季可观菩提花',
+    image: '/assets/images/bodhi.jpg',
+    tags: ['自然风光', '佛教文化'],
+    visitTime: 20
+  },
+  'LS-006': {
+    id: 'LS-006',
+    name: '灵山大佛',
+    position: '景区核心区域',
+    highlight: '世界最高露天青铜释迦牟尼立像',
+    description: '通高88米，佛体79米，莲花瓣9米，总用铜量725吨。右手施无畏印，左手施与愿印。',
+    culture: '216级登云道暗合佛教108烦恼与108愿望，前段为"烦恼尽除"，后段为"愿望圆满"',
+    tips: '登顶抱佛脚，俯瞰太湖全景，感受大佛宏伟气势',
+    image: '/assets/images/buddha.jpg',
+    tags: ['佛教文化', '祈福', '必游'],
+    visitTime: 60,
+    performance: {
+      time: '全天开放',
+      duration: '建议游览1小时'
+    }
+  },
+  'LS-007': {
+    id: 'LS-007',
+    name: '灵山梵宫',
+    position: '景区核心区域',
+    highlight: '佛教艺术的卢浮宫',
+    description: '建筑面积7.2万平方米，造价18亿，融合菩提伽耶塔风格与中国石窟艺术。',
+    culture: '内部汇集东阳木雕、敦煌壁画、扬州漆器、景泰蓝须弥灯等多种传统工艺',
+    tips: '观看《吉祥颂》演出（每日10:35、11:30、14:00、16:00）',
+    image: '/assets/images/palace.jpg',
+    tags: ['建筑艺术', '佛教文化', '必游'],
+    visitTime: 90,
+    performance: {
+      name: '《吉祥颂》',
+      time: '10:35、11:30、14:00、16:00',
+      duration: '20分钟'
+    }
+  },
+  'LS-008': {
+    id: 'LS-008',
+    name: '九龙灌浴',
+    position: '景区中轴线上',
+    highlight: '花开见佛的神圣瞬间',
+    description: '总高27.5米，青铜重量260吨，中央为7.2米高鎏金太子佛像。',
+    culture: '再现释迦牟尼诞生时"九龙吐水"的经典场景',
+    tips: '表演结束后可接取祈福圣水，寓意吉祥安康',
+    image: '/assets/images/fountain.jpg',
+    tags: ['佛教文化', '演艺', '祈福'],
+    visitTime: 30,
+    performance: {
+      name: '九龙灌浴表演',
+      time: '10:00、11:30、14:00、15:30',
+      duration: '15分钟'
+    }
+  },
+  'LS-009': {
+    id: 'LS-009',
+    name: '五印坛城',
+    position: '景区东侧',
+    highlight: '藏传佛教文化瑰宝',
+    description: '占地面积约5000平方米，藏传佛教风格建筑，金顶红墙。',
+    culture: '坛城内供奉五方五佛，壁画面积达1500平方米',
+    tips: '体验藏传佛教文化，亲手转动经筒，感受"转经一圈，福慧双增"',
+    image: '/assets/images/tancheng.jpg',
+    tags: ['佛教文化', '建筑艺术'],
+    visitTime: 45
+  }
+};
+
+// 常见问题知识库
+const qaKnowledge = {
+  '灵山大佛有多高': {
+    content: '灵山大佛通高88米，其中佛体79米，莲花瓣9米，总高101.5米。它是目前世界上最高的露天青铜释迦牟尼立像，总用铜量达725吨。',
+    relatedAttractions: ['LS-006']
+  },
+  '灵山大佛高度': {
+    content: '灵山大佛通高88米，其中佛体79米，莲花瓣9米，总高101.5米。',
+    relatedAttractions: ['LS-006']
+  },
+  '景区门票多少钱': {
+    content: '灵山胜境门票价格：成人票210元/人，优惠票120元/人（适用于学生、60-69岁老人），70岁以上老人、残疾人、现役军人凭证件免票。门票包含灵山大佛、灵山梵宫、九龙灌浴、五印坛城等核心景点。',
+    relatedAttractions: []
+  },
+  '门票价格': {
+    content: '成人票210元/人，优惠票120元/人（学生、60-69岁老人），70岁以上老人、残疾人、现役军人免票。',
+    relatedAttractions: []
+  },
+  '开放时间': {
+    content: '灵山胜境开放时间：旺季（3月-11月）07:00-17:30，淡季（12月-2月）07:30-17:00。建议游玩时间4-6小时。',
+    relatedAttractions: []
+  },
+  '九龙灌浴几点开始': {
+    content: '九龙灌浴表演时间：每日4-5场，通常为10:00、11:30、14:00、15:30。表演时长约15分钟。建议提前10分钟到场，表演结束后可接取祈福圣水。',
+    relatedAttractions: ['LS-008']
+  },
+  '灵山梵宫': {
+    content: '灵山梵宫被誉为"佛教艺术的卢浮宫"，建筑面积7.2万平方米，造价18亿。内部有28米高星空穹顶、华藏世界琉璃壁画、东阳木雕群等艺术珍品。《吉祥颂》演出每日4场：10:35、11:30、14:00、16:00，时长20分钟。',
+    relatedAttractions: ['LS-007']
+  },
+  '推荐路线': {
+    content: '我为您推荐经典游览路线（约4-5小时）：\n\n1️⃣ 灵山大照壁（15分钟）→\n2️⃣ 五明桥（10分钟）→\n3️⃣ 佛足坛（15分钟）→\n4️⃣ 五智门（15分钟）→\n5️⃣ 菩提大道（20分钟）→\n6️⃣ 九龙灌浴（30分钟，看表演）→\n7️⃣ 灵山大佛（60分钟，登顶抱佛脚）→\n8️⃣ 灵山梵宫（90分钟，看演出）→\n9️⃣ 五印坛城（45分钟）',
+    relatedAttractions: ['LS-001', 'LS-006', 'LS-007', 'LS-008', 'LS-009']
+  },
+  '有什么好玩的': {
+    content: '灵山胜境核心体验：\n\n🏔️ 必游景点：灵山大佛（抱佛脚祈福）、灵山梵宫（看《吉祥颂》演出）、九龙灌浴（接圣水）\n\n🎭 特色体验：登216级登云道、观看大型演出、转动经筒祈福\n\n📸 打卡推荐：大佛脚下俯瞰太湖、梵宫穹顶拍照、九龙灌浴彩虹',
+    relatedAttractions: ['LS-006', 'LS-007', 'LS-008']
+  },
+  '交通怎么去': {
+    content: '前往灵山胜境的交通方式：\n\n🚌 公交：无锡火车站乘坐88路、89路直达；鼋头渚乘坐88路直达\n\n🚗 自驾：\n• 沪宁高速无锡东出口→太湖大道→梁清路→环湖路→灵山\n• 锡宜高速阳山出口→陆马公路→灵山\n\n📍 地址：江苏省无锡市滨湖区马山镇灵山路1号',
+    relatedAttractions: []
+  }
+};
+
+/**
+ * 获取知识库回复
+ */
+function getResponse(query) {
+  // 标准化查询
+  const normalizedQuery = query.toLowerCase().replace(/[？?。！!，,]/g, '');
+  
+  // 直接匹配
+  if (qaKnowledge[query]) {
+    return formatResponse(qaKnowledge[query]);
+  }
+  
+  // 模糊匹配
+  for (const key in qaKnowledge) {
+    if (normalizedQuery.includes(key.toLowerCase()) || key.toLowerCase().includes(normalizedQuery)) {
+      return formatResponse(qaKnowledge[key]);
+    }
+  }
+  
+  // 关键词匹配
+  const keywords = {
+    '大佛': 'LS-006',
+    '梵宫': 'LS-007',
+    '九龙': 'LS-008',
+    '坛城': 'LS-009',
+    '菩提': 'LS-005',
+    '照壁': 'LS-001',
+    '门票': '门票',
+    '价格': '门票',
+    '多少钱': '门票',
+    '时间': '开放时间',
+    '开放': '开放时间',
+    '交通': '交通怎么去',
+    '怎么去': '交通怎么去',
+    '路线': '推荐路线',
+    '推荐': '推荐路线'
+  };
+  
+  for (const keyword in keywords) {
+    if (normalizedQuery.includes(keyword)) {
+      const matchedKey = keywords[keyword];
+      if (qaKnowledge[matchedKey]) {
+        return formatResponse(qaKnowledge[matchedKey]);
+      }
+      // 景点ID匹配
+      if (attractions[matchedKey]) {
+        const attr = attractions[matchedKey];
+        return {
+          content: `${attr.name}：${attr.highlight}\n\n${attr.description}\n\n${attr.culture}\n\n游览提示：${attr.tips}`,
+          recommendations: [attractions[matchedKey]]
+        };
+      }
+    }
+  }
+  
+  // 默认回复
+  return {
+    content: `感谢您的提问！关于"${query}"，我目前的知识库中暂无相关信息。\n\n您可以问我：\n• 灵山大佛有多高？\n• 推荐一条游览路线\n• 灵山梵宫有什么特色？\n• 景区门票多少钱？\n• 九龙灌浴几点开始？`,
+    recommendations: [
+      attractions['LS-006'],
+      attractions['LS-007'],
+      attractions['LS-008']
+    ]
+  };
+}
+
+/**
+ * 格式化回复
+ */
+function formatResponse(qaData) {
+  const recommendations = qaData.relatedAttractions 
+    ? qaData.relatedAttractions.map(id => attractions[id]).filter(Boolean)
+    : [];
+  
+  return {
+    content: qaData.content,
+    recommendations: recommendations,
+    actions: recommendations.length > 0 ? [
+      { type: 'route', text: '查看推荐路线', params: 'custom' }
+    ] : []
+  };
+}
+
+/**
+ * 获取景点详情
+ */
+function getAttraction(id) {
+  return attractions[id] || null;
+}
+
+/**
+ * 获取所有景点
+ */
+function getAllAttractions() {
+  return Object.values(attractions);
+}
+
+/**
+ * 根据兴趣推荐景点
+ */
+function recommendByInterests(interests) {
+  const allAttractions = Object.values(attractions);
+  const recommended = [];
+  
+  for (const attraction of allAttractions) {
+    for (const interest of interests) {
+      if (attraction.tags.some(tag => tag.includes(interest) || interest.includes(tag))) {
+        if (!recommended.find(a => a.id === attraction.id)) {
+          recommended.push(attraction);
+        }
+      }
+    }
+  }
+  
+  return recommended.length > 0 ? recommended : allAttractions.slice(0, 5);
+}
+
+module.exports = {
+  getResponse,
+  getAttraction,
+  getAllAttractions,
+  recommendByInterests,
+  attractions
+};
+
+
+
+--- 文件: ./server/api/attractions.js ---
+
+// server/api/attractions.js - 景点API
+
+const express = require('express');
+const router = express.Router();
+const attractionsData = require('../knowledge/attractions');
+
+/**
+ * 获取景点列表
+ * GET /api/attractions
+ */
+router.get('/', (req, res) => {
+  try {
+    const { tag, limit } = req.query;
+    let attractions = attractionsData.getAllAttractions();
+    
+    // 按标签筛选
+    if (tag) {
+      attractions = attractions.filter(a => 
+        a.tags && a.tags.includes(tag)
+      );
+    }
+    
+    // 限制数量
+    if (limit) {
+      attractions = attractions.slice(0, parseInt(limit));
+    }
+    
+    res.json({
+      success: true,
+      data: attractions,
+      total: attractions.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: '获取景点列表失败' });
+  }
+});
+
+/**
+ * 获取景点详情
+ * GET /api/attractions/:id
+ */
+router.get('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const attraction = attractionsData.getAttraction(id);
+    
+    if (!attraction) {
+      return res.status(404).json({ error: '景点不存在' });
+    }
+    
+    // 获取相关景点
+    const related = getRelatedAttractions(attraction);
+    
+    res.json({
+      success: true,
+      data: {
+        ...attraction,
+        relatedAttractions: related
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: '获取景点详情失败' });
+  }
+});
+
+/**
+ * 搜索景点
+ * GET /api/attractions/search/:keyword
+ */
+router.get('/search/:keyword', (req, res) => {
+  try {
+    const { keyword } = req.params;
+    const attractions = attractionsData.getAllAttractions();
+    
+    const results = attractions.filter(a => 
+      a.name.includes(keyword) || 
+      a.highlight.includes(keyword) ||
+      a.description.includes(keyword)
+    );
+    
+    res.json({
+      success: true,
+      data: results,
+      keyword
+    });
+  } catch (error) {
+    res.status(500).json({ error: '搜索失败' });
+  }
+});
+
+/**
+ * 获取推荐景点
+ * POST /api/attractions/recommend
+ */
+router.post('/recommend', (req, res) => {
+  try {
+    const { interests, visited } = req.body;
+    let recommendations = attractionsData.recommendByInterests(interests || []);
+    
+    // 排除已访问的景点
+    if (visited && visited.length > 0) {
+      recommendations = recommendations.filter(a => 
+        !visited.includes(a.id)
+      );
+    }
+    
+    res.json({
+      success: true,
+      data: recommendations.slice(0, 5)
+    });
+  } catch (error) {
+    res.status(500).json({ error: '获取推荐失败' });
+  }
+});
+
+// 辅助函数：获取相关景点
+function getRelatedAttractions(attraction) {
+  const allAttractions = attractionsData.getAllAttractions();
+  return allAttractions
+    .filter(a => a.id !== attraction.id)
+    .filter(a => a.tags && attraction.tags && 
+      a.tags.some(tag => attraction.tags.includes(tag)))
+    .slice(0, 3);
+}
+
+module.exports = router;
+
+
+
+--- 文件: ./server/api/chat.js ---
+
+// server/api/chat.js - 聊天API
+
+const express = require('express');
+const router = express.Router();
+const knowledge = require('../knowledge/attractions');
+const aiService = require('../services/ai');
+
+/**
+ * 聊天接口
+ * POST /api/chat
+ */
+router.post('/', async (req, res) => {
+  try {
+    const { query, userId, interests, history } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ error: '请输入问题' });
+    }
+
+    // 记录用户查询（用于数据分析）
+    logUserQuery(userId, query);
+
+    // 1. 先尝试本地知识库匹配
+    const localResponse = knowledge.getResponse(query);
+    
+    if (localResponse && localResponse.content) {
+      return res.json({
+        success: true,
+        source: 'knowledge',
+        ...localResponse
+      });
+    }
+
+    // 2. 调用AI大模型（如果配置了）
+    if (process.env.AI_API_KEY) {
+      try {
+        const aiResponse = await aiService.chat(query, history, interests);
+        return res.json({
+          success: true,
+          source: 'ai',
+          content: aiResponse.content,
+          recommendations: aiResponse.recommendations || []
+        });
+      } catch (aiError) {
+        console.error('AI调用失败:', aiError);
+        // AI失败时返回知识库默认回复
+      }
+    }
+
+    // 3. 返回默认回复
+    res.json({
+      success: true,
+      source: 'default',
+      content: getWelcomeMessage(),
+      recommendations: knowledge.getTopAttractions(3)
+    });
+
+  } catch (error) {
+    console.error('Chat error:', error);
+    res.status(500).json({ error: '服务错误，请稍后重试' });
+  }
+});
+
+/**
+ * 语音识别接口
+ * POST /api/chat/voice/recognize
+ */
+router.post('/voice/recognize', async (req, res) => {
+  try {
+    // 这里应该接入讯飞语音识别API
+    // 示例返回
+    res.json({
+      success: true,
+      text: '示例识别结果'
+    });
+  } catch (error) {
+    res.status(500).json({ error: '语音识别失败' });
+  }
+});
+
+/**
+ * 语音合成接口
+ * POST /api/chat/voice/synthesize
+ */
+router.post('/voice/synthesize', async (req, res) => {
+  try {
+    const { text } = req.body;
+    // 这里应该接入讯飞TTS API
+    res.json({
+      success: true,
+      audioUrl: '/static/audio/sample.mp3'
+    });
+  } catch (error) {
+    res.status(500).json({ error: '语音合成失败' });
+  }
+});
+
+/**
+ * 获取聊天历史
+ * GET /api/chat/history/:userId
+ */
+router.get('/history/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const history = await getChatHistory(userId);
+    res.json({ success: true, history });
+  } catch (error) {
+    res.status(500).json({ error: '获取历史失败' });
+  }
+});
+
+// 辅助函数
+function logUserQuery(userId, query) {
+  // TODO: 记录到数据库
+  console.log(`[${new Date().toISOString()}] User ${userId}: ${query}`);
+}
+
+function getWelcomeMessage() {
+  const messages = [
+    '您好！我是灵山胜境AI导游小灵，很高兴为您服务！有什么我可以帮您的吗？',
+    '欢迎来到灵山胜境！我可以为您介绍景点、推荐路线、回答问题。请问您想了解什么？'
+  ];
+  return messages[Math.floor(Math.random() * messages.length)];
+}
+
+async function getChatHistory(userId) {
+  // TODO: 从数据库获取
+  return [];
+}
+
+module.exports = router;
+
+
+
+--- 文件: ./server/api/routes.js ---
+
+// server/api/routes.js - 路线推荐API
+
+const express = require('express');
+const router = express.Router();
+
+// 预设路线数据
+const routes = {
+  'classic': {
+    id: 'classic',
+    name: '经典游览路线',
+    duration: '4-5小时',
+    description: '涵盖灵山胜境所有核心景点，适合首次到访游客',
+    highlights: ['灵山大佛', '灵山梵宫', '九龙灌浴'],
+    stops: [
+      { order: 1, attractionId: 'LS-001', name: '灵山大照壁', duration: 15, tip: '入口打卡，拍摄湖光壁影' },
+      { order: 2, attractionId: 'LS-002', name: '五明桥', duration: 10, tip: '漫步过桥，体悟五明智慧' },
+      { order: 3, attractionId: 'LS-003', name: '佛足坛', duration: 15, tip: '瞻仰佛足，触摸吉祥图案' },
+      { order: 4, attractionId: 'LS-004', name: '五智门', duration: 15, tip: '拍摄牌坊，解读门柱经文' },
+      { order: 5, attractionId: 'LS-005', name: '菩提大道', duration: 20, tip: '漫步林荫，感受禅意' },
+      { order: 6, attractionId: 'LS-008', name: '九龙灌浴', duration: 30, tip: '观看表演，接取圣水' },
+      { order: 7, attractionId: 'LS-006', name: '灵山大佛', duration: 60, tip: '登顶抱佛脚，俯瞰太湖' },
+      { order: 8, attractionId: 'LS-007', name: '灵山梵宫', duration: 90, tip: '欣赏建筑，观看演出' },
+      { order: 9, attractionId: 'LS-009', name: '五印坛城', duration: 45, tip: '转经祈福，体验藏传文化' }
+    ],
+    totalDistance: '约3公里',
+    difficulty: '中等'
+  },
+  'buddhist': {
+    id: 'buddhist',
+    name: '佛教文化深度游',
+    duration: '5-6小时',
+    description: '深度体验佛教文化，适合对佛教文化感兴趣的游客',
+    highlights: ['灵山大佛', '灵山梵宫', '五印坛城'],
+    stops: [
+      { order: 1, attractionId: 'LS-001', name: '灵山大照壁', duration: 20, tip: '研读《小灵山》诗，了解灵山渊源' },
+      { order: 2, attractionId: 'LS-002', name: '五明桥', duration: 15, tip: '学习五明智慧内涵' },
+      { order: 3, attractionId: 'LS-003', name: '佛足坛', duration: 20, tip: '瞻仰佛足，了解32种吉祥图案寓意' },
+      { order: 4, attractionId: 'LS-004', name: '五智门', duration: 20, tip: '研读门柱经文，理解五方五佛' },
+      { order: 5, attractionId: 'LS-005', name: '菩提大道', duration: 25, tip: '静心漫步，体验禅修' },
+      { order: 6, attractionId: 'LS-006', name: '灵山大佛', duration: 90, tip: '深入了解大佛建造历程，登顶祈福' },
+      { order: 7, attractionId: 'LS-008', name: '九龙灌浴', duration: 40, tip: '观看表演，了解释迦牟尼诞生传说' },
+      { order: 8, attractionId: 'LS-007', name: '灵山梵宫', duration: 120, tip: '深度欣赏佛教艺术，观看《吉祥颂》' },
+      { order: 9, attractionId: 'LS-009', name: '五印坛城', duration: 60, tip: '学习藏传佛教文化，转经祈福' }
+    ],
+    totalDistance: '约3.5公里',
+    difficulty: '中等'
+  },
+  'family': {
+    id: 'family',
+    name: '亲子休闲游',
+    duration: '3-4小时',
+    description: '轻松休闲路线，适合带老人小孩的家庭',
+    highlights: ['九龙灌浴', '灵山梵宫'],
+    stops: [
+      { order: 1, attractionId: 'LS-001', name: '灵山大照壁', duration: 10, tip: '简单打卡拍照' },
+      { order: 2, attractionId: 'LS-002', name: '五明桥', duration: 10, tip: '过桥拍照' },
+      { order: 3, attractionId: 'LS-005', name: '菩提大道', duration: 15, tip: '林荫下休息' },
+      { order: 4, attractionId: 'LS-008', name: '九龙灌浴', duration: 30, tip: '观看表演，接圣水' },
+      { order: 5, attractionId: 'LS-007', name: '灵山梵宫', duration: 90, tip: '乘电梯参观，看演出' },
+      { order: 6, attractionId: 'LS-006', name: '灵山大佛', duration: 45, tip: '可选择不登顶，在广场祈福' }
+    ],
+    totalDistance: '约2公里',
+    difficulty: '轻松'
+  },
+  'photography': {
+    id: 'photography',
+    name: '摄影打卡游',
+    duration: '4-5小时',
+    description: '精选最佳拍照点位，适合摄影爱好者',
+    highlights: ['灵山大佛', '灵山梵宫', '九龙灌浴'],
+    stops: [
+      { order: 1, attractionId: 'LS-001', name: '灵山大照壁', duration: 20, tip: '最佳角度：照壁与湖水倒影' },
+      { order: 2, attractionId: 'LS-005', name: '菩提大道', duration: 30, tip: '最佳角度：菩提树拱廊逆光' },
+      { order: 3, attractionId: 'LS-008', name: '九龙灌浴', duration: 45, tip: '最佳角度：表演时莲花开启瞬间' },
+      { order: 4, attractionId: 'LS-006', name: '灵山大佛', duration: 60, tip: '最佳角度：登云道仰拍、大佛脚下俯瞰太湖' },
+      { order: 5, attractionId: 'LS-007', name: '灵山梵宫', duration: 90, tip: '最佳角度：穹顶星空、华藏世界壁画、廊厅' },
+      { order: 6, attractionId: 'LS-009', name: '五印坛城', duration: 30, tip: '最佳角度：金顶红墙外观、转经筒长廊' }
+    ],
+    totalDistance: '约2.5公里',
+    difficulty: '中等'
+  }
+};
+
+/**
+ * 获取所有路线
+ * GET /api/routes
+ */
+router.get('/', (req, res) => {
+  try {
+    const routeList = Object.values(routes).map(r => ({
+      id: r.id,
+      name: r.name,
+      duration: r.duration,
+      description: r.description,
+      highlights: r.highlights,
+      difficulty: r.difficulty
+    }));
+    
+    res.json({
+      success: true,
+      data: routeList
+    });
+  } catch (error) {
+    res.status(500).json({ error: '获取路线失败' });
+  }
+});
+
+/**
+ * 获取路线详情
+ * GET /api/routes/:id
+ */
+router.get('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const route = routes[id];
+    
+    if (!route) {
+      return res.status(404).json({ error: '路线不存在' });
+    }
+    
+    res.json({
+      success: true,
+      data: route
+    });
+  } catch (error) {
+    res.status(500).json({ error: '获取路线详情失败' });
+  }
+});
+
+/**
+ * 根据条件推荐路线
+ * POST /api/routes/recommend
+ */
+router.post('/recommend', (req, res) => {
+  try {
+    const { duration, interests, groupType, difficulty } = req.body;
+    
+    // 简单的推荐逻辑
+    let recommendedRoutes = [];
+    
+    if (groupType === 'family' || difficulty === 'easy') {
+      recommendedRoutes.push(routes['family']);
+    }
+    
+    if (interests && interests.includes('佛教文化')) {
+      recommendedRoutes.push(routes['buddhist']);
+    }
+    
+    if (interests && interests.includes('摄影')) {
+      recommendedRoutes.push(routes['photography']);
+    }
+    
+    // 默认推荐经典路线
+    if (recommendedRoutes.length === 0) {
+      recommendedRoutes.push(routes['classic']);
+    }
+    
+    res.json({
+      success: true,
+      data: recommendedRoutes
+    });
+  } catch (error) {
+    res.status(500).json({ error: '推荐路线失败' });
+  }
+});
+
+/**
+ * 生成自定义路线
+ * POST /api/routes/custom
+ */
+router.post('/custom', (req, res) => {
+  try {
+    const { startAttraction, endAttraction, duration, mustVisit } = req.body;
+    
+    // 这里可以实现路线规划算法
+    // 简单示例：返回经典路线
+    res.json({
+      success: true,
+      data: routes['classic'],
+      message: '已根据您的需求生成推荐路线'
+    });
+  } catch (error) {
+    res.status(500).json({ error: '生成路线失败' });
+  }
+});
+
+module.exports = router;
+
+
+
+--- 文件: ./server/app.js ---
+
+// server/app.js - 后端服务入口
+
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const multer = require('multer');
+const path = require('path');
+
+// 创建Express应用
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// 中间件配置
+app.use(cors());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
