@@ -22,26 +22,26 @@
       {
         "pagePath": "pages/index/index",
         "text": "首页",
-        "iconPath": "assets/icons/home.svg",
-        "selectedIconPath": "assets/icons/home-active.svg"
+        "iconPath": "assets/icons/home.png",
+        "selectedIconPath": "assets/icons/home-active.png"
       },
       {
         "pagePath": "pages/chat/chat",
         "text": "智能导游",
-        "iconPath": "assets/icons/chat.svg",
-        "selectedIconPath": "assets/icons/chat-active.svg"
+        "iconPath": "assets/icons/chat.png",
+        "selectedIconPath": "assets/icons/chat-active.png"
       },
       {
         "pagePath": "pages/map/map",
         "text": "导览地图",
-        "iconPath": "assets/icons/map.svg",
-        "selectedIconPath": "assets/icons/map-active.svg"
+        "iconPath": "assets/icons/map.png",
+        "selectedIconPath": "assets/icons/map-active.png"
       },
       {
         "pagePath": "pages/profile/profile",
         "text": "我的",
-        "iconPath": "assets/icons/profile.svg",
-        "selectedIconPath": "assets/icons/profile-active.svg"
+        "iconPath": "assets/icons/profile.png",
+        "selectedIconPath": "assets/icons/profile-active.png"
       }
     ]
   },
